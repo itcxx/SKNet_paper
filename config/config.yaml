@@ -1,0 +1,128 @@
+# 基础路径
+base_dir: "./"
+data_dir: "./data"
+checkpoint_dir: "./checkpoints"
+
+# 设备配置
+device: "cuda"
+distributed: False
+
+# 数据集配置
+# dataset01
+dataset:
+  train:
+    json_file: "/home/cxx/Code/kalibr/output_frames_1/hands_coco.json"
+    img_dir: "/home/cxx/Code/kalibr/output_frames_1"
+    transform: None
+  val:
+    json_file: "/home/cxx/Code/kalibr/output_frames_1/hands_coco.json"
+    img_dir: "/home/cxx/Code/kalibr/output_frames_1"
+    transform: None
+
+dataset_name: "HandPose"
+# dataset Lighthand99k
+#dataset:
+#  train:
+#    json_file: "/data2/LightHand99K/LightHand/evaluation/annotations.json"
+#    img_dir: "/data2/LightHand99K/LightHand/evaluation"
+#    transform: False
+#  val:
+#    json_file: "/data2/LightHand99K/LightHand/evaluation/annotations.json"
+#    img_dir: "/data2/LightHand99K/LightHand/evaluation"
+#    transform: False
+
+
+# 数据预处理
+# # 数据增强
+transform:
+  normalize: True
+data_preprocessor:
+  mean: [123.675, 116.28, 103.53]  # 归一化均值 (ImageNet 均值)
+  std: [58.395, 57.12, 57.375]  # 归一化标准差
+  bgr_to_rgb: True  # OpenCV 读取的默认是 BGR，需要转换成 RGB
+
+
+train_pipeline:
+#  - type: "LoadImage"
+  - type: "GetBBoxCenterScale"
+    padding: 1.25
+  - type: "TopdownAffine"
+    input_size: [256, 256]
+  - type: "Resize"
+    target_size: [256, 256]
+  - type: "RandomFlip" # Random horizontal flip
+    prob: 0.5
+  - type: "RandomRotation"
+    angle_range: [-45, 45]
+  - type: "GenerateTarget"  # Need put it in the last pipeline
+    name: 'HandPoseCodec'
+    image_size: [256,256]
+    heatmap_size: [64,64,64]
+    heatmap3d_depth_bound: 1000.0
+    root_depth_bound: 300.0
+    sigma: 0.05
+    max_bound: 255
+
+val_pipeline:
+  - type: "GetBBoxCenterScale"
+    padding: 1.0
+  - type: "TopdownAffine"
+    input_size: [ 256, 256 ]
+  - type: "Resize"
+    target_size: [256, 256]
+  - type: "GenerateTarget"  # Need put it in the last pipeline
+    name: 'HandPoseCodec'
+    image_size: [256,256]
+    heatmap_size: [64,64,64]
+    heatmap3d_depth_bound: 400.0
+    root_depth_bound: 300.0
+    sigma: 0.03  #  𝜎太小（比如 1 或更小），高斯核会非常尖锐，大部分值接近 0，只有极少网格是 1；网络在学习时可能梯度稀疏，难以学到平滑分布。
+    max_bound: 1.0
+
+  # - type: "PackPoseInputs"
+  #   meta_keys: ["img_id", "img_path", "input_size", "center", "scale", "hand_type", "hand_type_valid", "rel_root_depth"]
+
+# 模型配置
+model:
+  backbone_config:
+    backbone: "ResNet_SKACOT"  # 选择 ResNet 变体
+    in_channels: 3  # 输出channel
+    resnet_depth: 50  # 选择 ResNet 深度 {18, 34, 50, 101, 152}
+    channels: 2048 # resnet的最后的输出特征大小
+    out_channels: 2048 # 最后整个模型想要的输出大小
+  neck: "GAP"  # 选择 Neck 结构 {GAP, FPN, SimpleConv, DeformableConv, Hourglass}
+  neck_config:
+    in_channels: 512  # ResNet 最终输出的通道数  ，GAP 的时候不需要
+  head_config:
+    in_channels: 2048
+    num_joints: 21 
+    depth_size: 64
+    heatmap_size: [64,64,64]
+
+
+# 训练超参数
+train:
+  batch_size: 10
+  epochs: 100
+  learning_rate: 0.0001
+  weight_decay: 0.1
+  optimizer: "adam"
+  scheduler: "step"
+  step_size: 20
+  gamma: 0.5
+  num_workers: 0
+  pin_memory: True
+  resume: "./checkpoints/best_model.pth"
+
+  visualization_interval: 400  # 每10个迭代保存一次可视化结果
+  visualization_save_path: "./vis_results_train" # 保存路径
+
+# 评估和测试
+test:
+  batch_size: 2
+  flip_test: False
+
+# 可视化配置
+visualization:
+  save_images: True
+  save_path: "./vis_results"
