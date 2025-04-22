@@ -1,0 +1,118 @@
+# 基础路径
+base_dir: "./"
+data_dir: "./data"
+checkpoint_dir: "./checkpoints"
+
+# 设备配置
+device: "cuda"
+distributed: False
+
+# 数据集配置
+# dataset01
+
+dataset_name: "Interhand99k"  # Interhand99k, HandPose
+
+dataset:
+  train:
+    json_file: "/data1/LightHand_val_data2_82/train/annotations.json"
+    img_dir: "/data1/LightHand_val_data2_82/train"
+    transform: True
+  val:
+    json_file: "/data1/LightHand_val_data2_82/val/annotations.json"
+    img_dir: "/data1/LightHand_val_data2_82/val"
+    transform: False
+
+
+# 数据预处理
+# # 数据增强
+transform:
+  normalize: True
+data_preprocessor:
+  mean: [123.675, 116.28, 103.53]  # 归一化均值 (ImageNet 均值)
+  std: [58.395, 57.12, 57.375]  # 归一化标准差
+  bgr_to_rgb: True  # OpenCV 读取的默认是 BGR，需要转换成 RGB
+
+
+train_pipeline:
+#  - type: "LoadImage"
+  - type: "Resize"
+    target_size: [ 256, 256 ]
+  - type: "GetBBoxCenterScale"
+    padding: 1.25
+  - type: "TopdownAffine"
+    input_size: [256, 256]
+  - type: "RandomFlip" # Random horizontal flip
+    prob: 0.5
+  - type: "RandomRotation"
+    angle_range: [-45, 45]
+  - type: "GenerateTarget"  # Need put it in the last pipeline
+    name: 'HandPoseCodec'
+    image_size: [256,256]
+    heatmap_size: [64,64,64]
+    heatmap3d_depth_bound: 1000.0
+    root_depth_bound: 300.0
+#    sigma: 2.5 # 这里使用像素级别的heatmap生成的时候使用的
+    sigma: 0.05   # 这里使用的是比率形式的 0.05 表示热图面积占据5%的比率
+    max_bound: 300
+
+val_pipeline:
+  - type: "Resize"
+    target_size: [256, 256]
+  - type: "GenerateTarget"  # Need put it in the last pipeline
+    name: 'HandPoseCodec'
+    image_size: [256,256]
+    heatmap_size: [64,64,64]
+    heatmap3d_depth_bound: 1000.0
+    root_depth_bound: 300.0
+#    sigma: 2.5  #  𝜎太小（比如 1 或更小），高斯核会非常尖锐，大部分值接近 0，只有极少网格是 1；网络在学习时可能梯度稀疏，难以学到平滑分布。
+    sigma: 0.05
+    max_bound: 1
+
+  # - type: "PackPoseInputs"
+  #   meta_keys: ["img_id", "img_path", "input_size", "center", "scale", "hand_type", "hand_type_valid", "rel_root_depth"]
+
+# 模型配置
+model:
+  backbone_config:
+    backbone: "ResNet_SKACOT"  # 选择 ResNet 变体
+    in_channels: 3  # 输出channel
+    resnet_depth: 50  # 选择 ResNet 深度 {18, 34, 50, 101, 152}
+    channels: 2048 # resnet的最后的输出特征大小
+    out_channels: 2048 # 最后整个模型想要的输出大小
+  neck: "GAP"  # 选择 Neck 结构 {GAP, FPN, SimpleConv, DeformableConv, Hourglass}
+  neck_config:
+    in_channels: 512  # ResNet 最终输出的通道数  ，GAP 的时候不需要
+  head_config:
+    in_channels: 2048
+    num_joints: 21 
+    depth_size: 64
+    heatmap_size: [64,64,64]
+
+
+# 训练超参数
+train:
+  gpu: [0,1,2]
+  batch_size: 60
+  epochs: 100
+  learning_rate: 0.001
+  weight_decay: 0.1
+  optimizer: "adam"
+  scheduler: "step"
+  step_size: 20
+  gamma: 0.5
+  num_workers: 10
+  pin_memory: True
+  resume: "./checkpoints/best_model.pth"
+
+  visualization_interval: 200  # 每10个迭代保存一次可视化结果
+  visualization_save_path: "./vis_results_Interhand99K_model01" # 保存路径
+
+# 评估和测试
+test:
+  batch_size: 2
+  flip_test: False
+
+# 可视化配置
+visualization:
+  save_images: True
+  save_path: "./work_dir/vis_results_Interhand99K"
